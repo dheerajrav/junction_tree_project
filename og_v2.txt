@@ -1,0 +1,7 @@
+BeginningState,LastLogin
+LastLogin,PercActiveToday
+BeginningState,PercActiveToday
+BeginningState,AutoRenewOn
+AutoRenewOn,EndState
+BilledAmount,NPreviousChurns
+NPreviousChurns,EndState

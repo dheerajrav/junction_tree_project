@@ -1,0 +1,15 @@
+ProductType,BilledAmount
+ProductType,BeginningState
+BilledAmount,BeginningState
+BeginningState,NPreviousChurns
+BeginningState,AutoRenewOn
+BeginningState,TurnAutoRenewOff
+AutoRenewOn,TurnAutoRenewOff
+AutoRenewOn,NActiveMonths
+NActiveMonths,TurnAutoRenewOff
+AutoRenewOn,NContActiveMonths
+NContActiveMonths,NActiveMonths
+AutoRenewOn,MaxContActiveMonths
+MaxContActiveMonths,NContActiveMonths
+AutoRenewOn,EndState
+EndState,MaxContActiveMonths
