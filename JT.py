@@ -1,8 +1,9 @@
 import networkx as nx
 import random
-import itertools
 import ProbPy
 import pandas as pd
+import itertools
+import matplotlib.pyplot as plt
 
 
 def only_prob(df_colm):
@@ -19,7 +20,6 @@ def only_prob(df_colm):
 def conditional_prob_list(df, var_list1, var_list2):
     # var_list2 given var_list1 list
     num = df.groupby(var_list1+var_list2[:-1])[var_list2[-1]].value_counts()
-    dem = 0
     denom = df.groupby(var_list1)[var_list1[0]].count()
     cond_prob_val = num / denom
     cond_prob_val.sort_index(inplace=True)
@@ -50,7 +50,6 @@ class JunctionTree:
         self.rand_vars = {}
         self.generate_potentials()
 
-
     def fetch_factor(self, node, edge_nodes):
         """
             Not only do you have to generate the proper
@@ -62,9 +61,7 @@ class JunctionTree:
         if len(edge_nodes) > 0:
             factor_vars = [node] + edge_nodes
 
-
         factor_list = [self.rand_vars[rand_var] for rand_var in factor_vars]
-        factor_domains = [self.rand_vars[var].domain for var in factor_vars]
 
         if len(edge_nodes) == 0:
             cond_prob = only_prob(self.data[node])
@@ -74,7 +71,6 @@ class JunctionTree:
         factor = ProbPy.Factor(factor_list, cond_prob)
 
         return factor
-
 
     def generate_potentials(self):
         """
@@ -99,6 +95,7 @@ class JunctionTree:
             node_domain.sort()
 
             rand_var = ProbPy.RandVar(node, node_domain)
+            print(rand_var.name, rand_var.domain)
             self.rand_vars[node] = rand_var
 
         for node in self.o_graph.nodes():
@@ -107,7 +104,7 @@ class JunctionTree:
             factors = self.fetch_factor(node, in_edges)
 
             # Create ProbPy potentials
-            potentials.append(factors)
+            potentials.append(([node, in_edges], factors))
 
         self.o_graph.graph['potentials'] = potentials
 
@@ -140,7 +137,6 @@ class JunctionTree:
                     self.j_graph.add_edge(clique_1, clique_2, name=edge_name, weight=len(separator), nodes=separator)
 
         # Now get the maximal spanning tree
-        # print edges
         self.j_tree = nx.algorithms.tree.maximum_spanning_tree(self.j_graph)
 
     def assign_potentials(self):
@@ -152,18 +148,21 @@ class JunctionTree:
         form a subset of the junction tree node variables
         """
 
+        random.seed(150)
         graph_potentials = self.o_graph.graph['potentials']
         randomized_potentials = random.sample(graph_potentials, len(graph_potentials))
 
         for node in self.j_tree.nodes():
             self.j_tree.nodes[node]['potential'] = []
+            self.j_tree.nodes[node]['potential_raw'] = []
 
-        for potential in randomized_potentials:
+        for _, potential in randomized_potentials:
             potential_set = set([rv.name for rv in potential.rand_vars])
             for node in self.j_tree.nodes():
                 clique_node_set = self.j_tree.nodes[node]['nodes']
                 if potential_set.issubset(clique_node_set):
                     self.j_tree.nodes[node]['potential'].append(potential)
+                    self.j_tree.nodes[node]['potential_raw'].append(_)
                     break
 
     def sum_product(self):
@@ -205,8 +204,6 @@ class JunctionTree:
 
         for node in self.j_tree.nodes:
             self.j_tree.nodes[node]['probability'] = self.j_tree.nodes[node]['marginal'] / self.Z
-            print(self.j_tree.nodes[node]['probability'])
-
 
     def collect(self, node_i, node_j):
         """
@@ -293,15 +290,63 @@ class JunctionTree:
 
         return(marginal_potential)
 
+    def plot_marginals(self):
+        """
+        Plot the marginals
+        """
+
+        for node in self.j_tree.nodes:
+            prob_potential = self.j_tree.nodes[node]['probability']
+            domains = [self.rand_vars[rv.name].domain for rv in prob_potential.rand_vars]
+            col_names = [rv.name for rv in prob_potential.rand_vars]
+
+            if 'EndState' in col_names:
+                print(domains)
+                rows = itertools.product(*domains)
+                vals = prob_potential.values
+                df = pd.DataFrame(rows, columns=col_names)
+                df['probability'] = vals
+                col_names.remove('EndState')
+                data = pd.pivot_table(df, values='probability', index=col_names, columns='EndState')
+                xlabel = ", ".join(_ for _ in data.index.names)
+                print(xlabel)
+                data.plot(kind='bar', xlabel=xlabel, title="P(EndState|AutoRenewOn, NPrevChurns)")
+                plt.savefig("end_state.png")
+                print(data.index.names)
+
+            if 'AutoRenewOn' in col_names and 'BeginningState' in col_names:
+                print(domains)
+                rows = itertools.product(*domains)
+                vals = prob_potential.values
+                df = pd.DataFrame(rows, columns=col_names)
+                df['probability'] = vals
+                col_names.remove('AutoRenewOn')
+                data = pd.pivot_table(df, values='probability', index=col_names, columns='AutoRenewOn')
+                xlabel = ", ".join(_ for _ in data.index.names)
+                print(xlabel)
+                data.plot(kind='bar', xlabel=xlabel, title="P(AutoRenewOn|BeginningState)")
+                plt.savefig("auto_renew_on.png")
+                print(data.index.names)
+
 
 if __name__ == '__main__':
 
-    G = nx.read_edgelist("og_edges.txt", delimiter=",", create_using=nx.DiGraph)
-    CG = nx.read_edgelist("moralised_edges.txt", delimiter=",")
-    df = pd.read_csv("processed_plus_one.csv")
+    G = nx.read_edgelist("og_v2.txt", delimiter=",", create_using=nx.DiGraph)
+    CG = nx.read_edgelist("moralised_edges_v2.txt", delimiter=",")
+    df = pd.read_csv("new_data.csv")
 
     JTA = JunctionTree(CG, G, df)
     JTA.generate_junction_tree()
 
     # Do Shafer-Shenoy Propagation
     JTA.sum_product()
+
+    for node in JTA.j_tree.nodes:
+        print(node, JTA.j_tree.nodes[node])
+
+    for edge in JTA.j_tree.edges:
+        print(edge, JTA.j_tree.edges[edge])
+
+    # Now plot marginals
+
+    JTA.plot_marginals()
